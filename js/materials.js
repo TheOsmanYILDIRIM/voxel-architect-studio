@@ -15,7 +15,11 @@ export const MATERIALS=[
   ["default:sandstonebrick","Sandstone Brick","default_sandstone_brick.png"],
   ["default:obsidian","Obsidian","default_obsidian.png"],
   ["default:brick","Brick","default_brick.png"],
-  ["default:dirt","Dirt","default_dirt.png"]
+  ["default:dirt","Dirt","default_dirt.png"],
+  ["stairs:stair_stonebrick","Stone Brick Stair","default_stone_brick.png"],
+  ["stairs:slab_stonebrick","Stone Brick Slab","default_stone_brick.png"],
+  ["stairs:stair_inner_stonebrick","Inner Stone Brick Stair","default_stone_brick.png"],
+  ["stairs:stair_outer_stonebrick","Outer Stone Brick Stair","default_stone_brick.png"]
 ];
 
 export const MATERIAL_MAP=new Map(MATERIALS.map(([name,label,file])=>[
@@ -23,7 +27,14 @@ export const MATERIAL_MAP=new Map(MATERIALS.map(([name,label,file])=>[
 ]));
 
 export function getMaterial(name){
-  return MATERIAL_MAP.get(name)||{name,label:name,file:null,url:null};
+  if(MATERIAL_MAP.has(name)) return MATERIAL_MAP.get(name);
+  const m=/^stairs:(?:stair_inner|stair_outer|stair|slab)_(.+)$/.exec(name||"");
+  if(m){
+    const aliases={stonebrick:"default:stonebrick",stone:"default:stone",cobble:"default:cobble",wood:"default:wood",brick:"default:brick",sandstonebrick:"default:sandstonebrick",sandstone:"default:sandstone",obsidian:"default:obsidian",desert_stonebrick:"default:desert_stonebrick"};
+    const base=aliases[m[1]];
+    if(base&&MATERIAL_MAP.has(base)) return MATERIAL_MAP.get(base);
+  }
+  return {name,label:name,file:null,url:null};
 }
 
 export function mountMaterialGrid(root,onSelect){
