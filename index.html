@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="AI-friendly parametric voxel construction studio for Luanti and WorldEdit.">
+  <title>Voxel Architect Studio</title>
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/layout.css">
+  <link rel="stylesheet" href="./css/components.css">
+</head>
+<body>
+  <header class="app-header">
+    <div>
+      <h1>Voxel Architect Studio</h1>
+      <p>Parametrik yapı kodu → voxel önizleme → Luanti / WorldEdit çıktısı</p>
+    </div>
+    <div class="badges">
+      <span id="statusBadge">Hazır</span>
+      <span id="voxelBadge">0 voxel</span>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="panel editor-panel">
+      <div class="panel-head">
+        <h2>VoxelBuild</h2>
+        <div class="actions">
+          <button id="sampleBtn">Örnek kaleyi yükle</button>
+          <button id="buildBtn" class="primary">İnşa et</button>
+        </div>
+      </div>
+      <textarea id="code" spellcheck="false" aria-label="VoxelBuild JSON"></textarea>
+      <div id="errorBox" class="error hidden"></div>
+      <div class="help"><b>Komutlar:</b> box · wall · round_tower · cylinder · gate · battlement · stairs · clear</div>
+    </section>
+
+    <section class="panel preview-panel">
+      <div class="panel-head">
+        <h2>Önizleme</h2>
+        <div class="actions">
+          <label>Ölçek <input id="zoom" type="range" min="2" max="18" value="7"></label>
+          <button id="fitBtn">Sığdır</button>
+        </div>
+      </div>
+      <canvas id="view"></canvas>
+      <div class="preview-help">Sürükle: döndür · Shift+sürükle: taşı · tekerlek: yakınlaştır</div>
+    </section>
+
+    <section class="panel materials-panel">
+      <div class="panel-head">
+        <h2>Luanti blokları</h2>
+        <span class="mini-note">Minetest Game texture seti</span>
+      </div>
+      <div id="materialGrid" class="material-grid"></div>
+    </section>
+
+    <section class="panel export-panel">
+      <div class="panel-head"><h2>Dışa aktar</h2></div>
+      <div class="export-grid">
+        <button id="weBtn">WorldEdit .we</button>
+        <button id="luaBtn">Luanti Lua</button>
+        <button id="jsonBtn">Voxel JSON</button>
+      </div>
+      <p class="muted">WorldEdit çıktısı yapı minimum koordinatını origin kabul eder.</p>
+    </section>
+
+    <section class="panel stats-panel">
+      <div class="panel-head"><h2>Yapı özeti</h2></div>
+      <div id="stats"></div>
+    </section>
+  </main>
+
+  <script type="module" src="./js/main.js"></script>
+</body>
+</html>
