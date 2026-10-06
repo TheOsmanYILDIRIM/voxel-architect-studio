@@ -1,154 +1,220 @@
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import {state,voxelKey} from "./state.js";
 import {getMaterial} from "./materials.js";
+import {nodeBoxes,nodeShape,baseNodeFor,facedirRotation} from "./node-registry.js";
 
-let host,app,world,zoomEl;
-let dragging=false,lastX=0,lastY=0,dragStartX=0,dragStartY=0;
-const tileCache=new Map();
-const TILE_W=64,TILE_H=64,TOP_H=18,SIDE_H=28;
+let host, renderer, scene, camera, world, zoomEl;
+let dragging=false,lastX=0,lastY=0,shiftDrag=false;
+let yaw=Math.PI*0.22,pitch=Math.PI*0.28,distance=72;
+const target=new THREE.Vector3(0,7,0);
+const textureCache=new Map();
+const materialCache=new Map();
+const geometryCache=new Map();
 
-function surfaceVoxels(){
-  const dirs=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],out=[];
-  for(const v of state.voxels.values()){
-    if(dirs.some(d=>!state.voxels.has(voxelKey(v.x+d[0],v.y+d[1],v.z+d[2]))))out.push(v);
-  }
-  return out;
-}
+function isFullCube(v){return nodeShape(v.mat)==="cube"}
 
-function loadImage(url){
-  return new Promise((resolve,reject)=>{
-    const img=new Image();
-    img.crossOrigin="anonymous";
-    img.onload=()=>resolve(img);
-    img.onerror=reject;
-    img.src=url;
+function isHiddenFullCube(v){
+  if(!isFullCube(v))return false;
+  const dirs=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  return dirs.every(([dx,dy,dz])=>{
+    const n=state.voxels.get(voxelKey(v.x+dx,v.y+dy,v.z+dz));
+    return n&&isFullCube(n);
   });
 }
 
-function drawFace(ctx,img,kind){
-  ctx.save();
-  if(kind==="top"){
-    ctx.beginPath();
-    ctx.moveTo(TILE_W/2,0);ctx.lineTo(TILE_W,TOP_H);ctx.lineTo(TILE_W/2,TOP_H*2);ctx.lineTo(0,TOP_H);ctx.closePath();ctx.clip();
-    ctx.setTransform(2,1.125,-2,1.125,0,0);
-    ctx.drawImage(img,0,0,16,16,0,0,16,16);
-  }else if(kind==="left"){
-    ctx.beginPath();
-    ctx.moveTo(0,TOP_H);ctx.lineTo(TILE_W/2,TOP_H*2);ctx.lineTo(TILE_W/2,TOP_H*2+SIDE_H);ctx.lineTo(0,TOP_H+SIDE_H);ctx.closePath();ctx.clip();
-    ctx.setTransform(2,1.125,0,1.75,0,TOP_H);
-    ctx.drawImage(img,0,0,16,16,0,0,16,16);
-    ctx.fillStyle="rgba(0,0,0,.24)";ctx.fillRect(-100,-100,300,300);
-  }else{
-    ctx.beginPath();
-    ctx.moveTo(TILE_W,TOP_H);ctx.lineTo(TILE_W/2,TOP_H*2);ctx.lineTo(TILE_W/2,TOP_H*2+SIDE_H);ctx.lineTo(TILE_W,TOP_H+SIDE_H);ctx.closePath();ctx.clip();
-    ctx.setTransform(-2,1.125,0,1.75,TILE_W,TOP_H);
-    ctx.drawImage(img,0,0,16,16,0,0,16,16);
-    ctx.fillStyle="rgba(0,0,0,.38)";ctx.fillRect(-100,-100,300,300);
+function textureFor(nodeName){
+  const base=baseNodeFor(nodeName);
+  if(textureCache.has(base))return textureCache.get(base);
+  const info=getMaterial(base);
+  if(!info.url){
+    textureCache.set(base,null);
+    return null;
   }
-  ctx.restore();
-}
-
-async function cubeTexture(name){
-  if(tileCache.has(name))return tileCache.get(name);
-  const material=getMaterial(name);
-  const c=document.createElement("canvas");c.width=TILE_W;c.height=TOP_H*2+SIDE_H;
-  const ctx=c.getContext("2d");
-  ctx.imageSmoothingEnabled=false;
-  if(material.url){
-    try{
-      const img=await loadImage(material.url);
-      drawFace(ctx,img,"top");drawFace(ctx,img,"left");drawFace(ctx,img,"right");
-    }catch{
-      ctx.fillStyle="#7d8793";ctx.fillRect(0,0,c.width,c.height);
-    }
-  }else{
-    ctx.fillStyle="#7d8793";ctx.fillRect(0,0,c.width,c.height);
-  }
-  const tex=window.PIXI.Texture.from(c);
-  tileCache.set(name,tex);
+  const tex=new THREE.TextureLoader().load(info.url,()=>render(),undefined,()=>{});
+  tex.magFilter=THREE.NearestFilter;
+  tex.minFilter=THREE.NearestFilter;
+  tex.colorSpace=THREE.SRGBColorSpace;
+  tex.wrapS=THREE.RepeatWrapping;
+  tex.wrapT=THREE.RepeatWrapping;
+  textureCache.set(base,tex);
   return tex;
 }
 
-function rotateXZ(x,z){
-  const a=state.camera.yaw,c=Math.cos(a),s=Math.sin(a);
-  return {x:x*c-z*s,z:x*s+z*c};
+function materialFor(nodeName){
+  const base=baseNodeFor(nodeName);
+  if(materialCache.has(base))return materialCache.get(base);
+  const map=textureFor(nodeName);
+  const mat=new THREE.MeshLambertMaterial({
+    map:map||null,
+    color:map?0xffffff:0x8b949e,
+    transparent:false
+  });
+  materialCache.set(base,mat);
+  return mat;
 }
 
-function iso(v){
-  const r=rotateXZ(v.x,v.z);
-  const unit=state.camera.zoom/7;
-  return {
-    x:(r.x-r.z)*(TILE_W/2)*unit,
-    y:(r.x+r.z)*(TOP_H/1.05)*unit-v.y*SIDE_H*unit,
-    depth:r.x+r.z+v.y*.02
-  };
+function boxGeometry(box){
+  const key=box.join(",");
+  if(geometryCache.has(key))return geometryCache.get(key);
+  const [x1,y1,z1,x2,y2,z2]=box;
+  const sx=x2-x1,sy=y2-y1,sz=z2-z1;
+  const g=new THREE.BoxGeometry(sx,sy,sz);
+  g.translate((x1+x2)/2,(y1+y2)/2,(z1+z2)/2);
+  geometryCache.set(key,g);
+  return g;
+}
+
+function clearWorld(){
+  while(world.children.length){
+    const obj=world.children.pop();
+    if(obj.parent)obj.parent.remove(obj);
+    obj.dispose?.();
+  }
+}
+
+function buildGroups(){
+  const groups=new Map();
+  for(const v of state.voxels.values()){
+    if(isHiddenFullCube(v))continue;
+    const boxes=nodeBoxes(v.mat);
+    const {yaw,upside}=facedirRotation(v.param2||0);
+    boxes.forEach((box,boxIndex)=>{
+      const k=`${v.mat}|${v.param2||0}|${boxIndex}`;
+      if(!groups.has(k))groups.set(k,{name:v.mat,param2:v.param2||0,box,items:[]});
+      groups.get(k).items.push({v,yaw,upside});
+    });
+  }
+  return groups;
+}
+
+function matrixFor(item){
+  const {v,yaw,upside}=item;
+  const pos=new THREE.Vector3(v.x,v.y,v.z);
+  const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
+  const qFlip=upside
+    ?new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),Math.PI)
+    :new THREE.Quaternion();
+  const q=qYaw.multiply(qFlip);
+  const m=new THREE.Matrix4();
+  m.compose(pos,q,new THREE.Vector3(1,1,1));
+  return m;
+}
+
+function updateCamera(){
+  const cp=Math.cos(pitch),sp=Math.sin(pitch);
+  camera.position.set(
+    target.x+Math.sin(yaw)*cp*distance,
+    target.y+sp*distance,
+    target.z+Math.cos(yaw)*cp*distance
+  );
+  camera.lookAt(target);
 }
 
 export async function render(){
-  if(!app||!world)return;
-  world.removeChildren().forEach(c=>c.destroy?.());
-  const surf=surfaceVoxels();
-  const prepared=[];
-  for(const v of surf){
-    const p=iso(v);
-    prepared.push({v,p,tex:await cubeTexture(v.mat)});
+  if(!renderer||!scene)return;
+  clearWorld();
+  const groups=buildGroups();
+  for(const group of groups.values()){
+    const geo=boxGeometry(group.box);
+    const mat=materialFor(group.name);
+    const mesh=new THREE.InstancedMesh(geo,mat,group.items.length);
+    mesh.frustumCulled=true;
+    mesh.castShadow=false;
+    mesh.receiveShadow=false;
+    group.items.forEach((item,i)=>mesh.setMatrixAt(i,matrixFor(item)));
+    mesh.instanceMatrix.needsUpdate=true;
+    world.add(mesh);
   }
-  prepared.sort((a,b)=>a.p.depth-b.p.depth||a.v.y-b.v.y);
-  const unit=state.camera.zoom/7;
-  for(const item of prepared){
-    const sprite=new window.PIXI.Sprite(item.tex);
-    sprite.anchor.set(.5,1);
-    sprite.position.set(item.p.x,item.p.y);
-    sprite.scale.set(unit);
-    world.addChild(sprite);
-  }
-  world.position.set(app.renderer.width/2+state.camera.panX,app.renderer.height*.66+state.camera.panY);
+  updateCamera();
+  renderer.render(scene,camera);
 }
 
 export async function fit(bounds){
-  if(!app)return;
-  const maxDim=Math.max(bounds.size[0]+bounds.size[2],bounds.size[1]*2,1);
-  state.camera.zoom=Math.max(2,Math.min(10,Math.min(app.renderer.width,app.renderer.height)*.18/maxDim*7));
-  state.camera.panX=0;state.camera.panY=0;
-  if(zoomEl)zoomEl.value=Math.round(state.camera.zoom);
-  await render();
+  if(!camera)return;
+  const cx=(bounds.min[0]+bounds.max[0])/2;
+  const cy=(bounds.min[1]+bounds.max[1])/2;
+  const cz=(bounds.min[2]+bounds.max[2])/2;
+  target.set(cx,cy,cz);
+  const radius=Math.max(bounds.size[0],bounds.size[1],bounds.size[2],8);
+  distance=Math.max(16,radius*2.25);
+  if(zoomEl){
+    const z=Math.max(2,Math.min(18,Math.round(180/distance)));
+    state.camera.zoom=z;zoomEl.value=z;
+  }
+  updateCamera();
+  renderer.render(scene,camera);
+}
+
+function resize(){
+  if(!renderer||!host)return;
+  const w=Math.max(1,host.clientWidth),h=Math.max(1,host.clientHeight);
+  renderer.setSize(w,h,false);
+  camera.aspect=w/h;camera.updateProjectionMatrix();
+  renderer.render(scene,camera);
 }
 
 export async function initRenderer(el,zEl){
   host=el;zoomEl=zEl;
-  app=new window.PIXI.Application();
-  await app.init({
-    resizeTo:host,
-    backgroundAlpha:0,
+  renderer=new THREE.WebGLRenderer({
     antialias:false,
-    preference:"webgl",
-    powerPreference:"low-power"
+    alpha:true,
+    powerPreference:"high-performance"
   });
-  host.replaceChildren(app.canvas);
-  world=new window.PIXI.Container();
-  app.stage.addChild(world);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,1.5));
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  host.replaceChildren(renderer.domElement);
+
+  scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0b0e12);
+
+  camera=new THREE.PerspectiveCamera(45,1,0.05,1000);
+  world=new THREE.Group();
+  scene.add(world);
+
+  scene.add(new THREE.HemisphereLight(0xffffff,0x34404d,1.8));
+  const sun=new THREE.DirectionalLight(0xffffff,2.2);
+  sun.position.set(30,50,20);
+  scene.add(sun);
+
+  const grid=new THREE.GridHelper(200,200,0x27313b,0x161d24);
+  grid.position.y=-0.505;
+  scene.add(grid);
 
   host.addEventListener("pointerdown",e=>{
-    dragging=true;lastX=e.clientX;lastY=e.clientY;dragStartX=e.clientX;dragStartY=e.clientY;
+    dragging=true;lastX=e.clientX;lastY=e.clientY;shiftDrag=e.shiftKey;
     host.setPointerCapture?.(e.pointerId);
   });
   host.addEventListener("pointerup",()=>dragging=false);
   host.addEventListener("pointercancel",()=>dragging=false);
-  host.addEventListener("pointermove",async e=>{
+  host.addEventListener("pointermove",e=>{
     if(!dragging)return;
     const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
-    if(e.shiftKey){
-      state.camera.panX+=dx;state.camera.panY+=dy;
+    if(shiftDrag||e.shiftKey){
+      const scale=distance*0.0015;
+      const right=new THREE.Vector3().setFromMatrixColumn(camera.matrix,0);
+      const up=new THREE.Vector3(0,1,0);
+      target.addScaledVector(right,-dx*scale);
+      target.addScaledVector(up,dy*scale);
     }else{
-      state.camera.yaw+=dx*.012;
-      state.camera.panY+=dy*.25;
+      yaw-=dx*0.009;
+      pitch=Math.max(-0.05,Math.min(Math.PI*.48,pitch+dy*0.007));
     }
-    await render();
+    updateCamera();renderer.render(scene,camera);
   });
-  host.addEventListener("wheel",async e=>{
+  host.addEventListener("wheel",e=>{
     e.preventDefault();
-    state.camera.zoom=Math.max(2,Math.min(18,state.camera.zoom*(e.deltaY>0?.9:1.1)));
-    zoomEl.value=Math.round(state.camera.zoom);
-    await render();
+    distance=Math.max(4,Math.min(350,distance*(e.deltaY>0?1.1:.9)));
+    state.camera.zoom=Math.max(2,Math.min(18,Math.round(180/distance)));
+    zoomEl.value=state.camera.zoom;
+    updateCamera();renderer.render(scene,camera);
   },{passive:false});
-  zoomEl.oninput=async e=>{state.camera.zoom=+e.target.value;await render()};
+  zoomEl.oninput=e=>{
+    state.camera.zoom=+e.target.value;
+    distance=180/state.camera.zoom;
+    updateCamera();renderer.render(scene,camera);
+  };
+
+  new ResizeObserver(resize).observe(host);
+  window.addEventListener("resize",resize);
+  resize();
 }
