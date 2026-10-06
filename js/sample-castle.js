@@ -7,7 +7,11 @@ export const SAMPLE_CASTLE={
     wood:"default:wood",
     brick:"default:brick",
     sandstone:"default:sandstonebrick",
-    air:"air"
+    air:"air",
+    stairStone:"stairs:stair_stonebrick",
+    slabStone:"stairs:slab_stonebrick",
+    innerStone:"stairs:stair_inner_stonebrick",
+    outerStone:"stairs:stair_outer_stonebrick"
   },
   ops:[
     {op:"wall",from:[-30,0,-22],to:[30,0,-22],height:11,thickness:3,mat:"stone"},
@@ -25,6 +29,11 @@ export const SAMPLE_CASTLE={
     {op:"battlement",from:[-30,11,-22],to:[30,11,-22],step:3,height:2,mat:"stone"},
     {op:"battlement",from:[-34,11,18],to:[0,11,28],step:3,height:2,mat:"stone"},
     {op:"battlement",from:[0,11,28],to:[34,11,18],step:3,height:2,mat:"stone"},
-    {op:"stairs",from:[-8,0,19],dir:[0,0,-1],width:3,steps:12,rise:1,run:1,mat:"stone"}
+    {op:"stairs",from:[-8,0,19],dir:[0,0,-1],width:3,steps:12,rise:1,run:1,mat:"stone"},
+    {op:"node",pos:[0,0,-18],mat:"stairStone",param2:0},
+    {op:"node",pos:[1,0,-18],mat:"stairStone",param2:1},
+    {op:"node",pos:[2,0,-18],mat:"slabStone",param2:0},
+    {op:"node",pos:[3,0,-18],mat:"innerStone",param2:2},
+    {op:"node",pos:[4,0,-18],mat:"outerStone",param2:3}
   ]
 };
