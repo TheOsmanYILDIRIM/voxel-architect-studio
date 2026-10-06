@@ -1,31 +1,38 @@
+const BASE="https://raw.githubusercontent.com/luanti-org/minetest_game/master/mods/default/textures/";
+
 export const MATERIALS=[
-  ["default:stone","Stone","#777"],
-  ["default:cobble","Cobblestone","#666"],
-  ["default:stonebrick","Stone Brick","#858585"],
-  ["default:wood","Apple Wood","#9a7444"],
-  ["default:acacia_wood","Acacia Wood","#9b4d2e"],
-  ["default:junglewood","Jungle Wood","#4e3b24"],
-  ["default:pine_wood","Pine Wood","#d2ae72"],
-  ["default:aspen_wood","Aspen Wood","#c9bfaa"],
-  ["default:desert_stone","Desert Stone","#7a4a38"],
-  ["default:desert_stonebrick","Desert Stone Brick","#8d5542"],
-  ["default:sandstone","Sandstone","#c7bf8d"],
-  ["default:sandstonebrick","Sandstone Brick","#c2b887"],
-  ["default:obsidian","Obsidian","#222631"],
-  ["default:brick","Brick","#8a4037"],
-  ["default:dirt","Dirt","#765232"]
+  ["default:stone","Stone","default_stone.png"],
+  ["default:cobble","Cobblestone","default_cobble.png"],
+  ["default:stonebrick","Stone Brick","default_stone_brick.png"],
+  ["default:wood","Apple Wood","default_wood.png"],
+  ["default:acacia_wood","Acacia Wood","default_acacia_wood.png"],
+  ["default:junglewood","Jungle Wood","default_junglewood.png"],
+  ["default:pine_wood","Pine Wood","default_pine_wood.png"],
+  ["default:aspen_wood","Aspen Wood","default_aspen_wood.png"],
+  ["default:desert_stone","Desert Stone","default_desert_stone.png"],
+  ["default:desert_stonebrick","Desert Stone Brick","default_desert_stone_brick.png"],
+  ["default:sandstone","Sandstone","default_sandstone.png"],
+  ["default:sandstonebrick","Sandstone Brick","default_sandstone_brick.png"],
+  ["default:obsidian","Obsidian","default_obsidian.png"],
+  ["default:brick","Brick","default_brick.png"],
+  ["default:dirt","Dirt","default_dirt.png"]
 ];
 
-export function materialColor(name){
-  return MATERIALS.find(m=>m[0]===name)?.[2]||"#8aa0b5";
+export const MATERIAL_MAP=new Map(MATERIALS.map(([name,label,file])=>[
+  name,{name,label,file,url:BASE+file}
+]));
+
+export function getMaterial(name){
+  return MATERIAL_MAP.get(name)||{name,label:name,file:null,url:null};
 }
 
 export function mountMaterialGrid(root,onSelect){
   root.innerHTML="";
-  for(const [name,label,color] of MATERIALS){
+  for(const [name,label,file] of MATERIALS){
     const card=document.createElement("div");
     card.className="mat-card";
-    card.innerHTML=`<span class="mat-swatch" style="background:${color}"></span><div><b>${label}</b><code>${name}</code></div>`;
+    const url=BASE+file;
+    card.innerHTML=`<img src="${url}" alt=""><div><b>${label}</b><code>${name}</code></div>`;
     card.onclick=()=>onSelect?.(name);
     root.appendChild(card);
   }
