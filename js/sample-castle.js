@@ -1,0 +1,30 @@
+export const SAMPLE_CASTLE={
+  format:"voxelbuild/1",
+  name:"hill_castle_demo",
+  palette:{
+    stone:"default:stonebrick",
+    dark:"default:cobble",
+    wood:"default:wood",
+    brick:"default:brick",
+    sandstone:"default:sandstonebrick",
+    air:"air"
+  },
+  ops:[
+    {op:"wall",from:[-30,0,-22],to:[30,0,-22],height:11,thickness:3,mat:"stone"},
+    {op:"wall",from:[30,0,-22],to:[34,0,18],height:11,thickness:3,mat:"stone"},
+    {op:"wall",from:[34,0,18],to:[0,0,28],height:11,thickness:3,mat:"stone"},
+    {op:"wall",from:[0,0,28],to:[-34,0,18],height:11,thickness:3,mat:"stone"},
+    {op:"wall",from:[-34,0,18],to:[-30,0,-22],height:11,thickness:3,mat:"stone"},
+    {op:"round_tower",center:[-30,0,-22],radius:6,height:18,thickness:2,mat:"stone"},
+    {op:"round_tower",center:[30,0,-22],radius:6,height:18,thickness:2,mat:"stone"},
+    {op:"round_tower",center:[34,0,18],radius:6,height:18,thickness:2,mat:"stone"},
+    {op:"round_tower",center:[-34,0,18],radius:6,height:18,thickness:2,mat:"stone"},
+    {op:"gate",center:[0,0,-22],axis:"x",width:8,height:7,depth:5},
+    {op:"box",from:[-11,0,2],to:[11,17,17],mat:"stone",hollow:true},
+    {op:"gate",center:[0,0,2],axis:"x",width:5,height:5,depth:3},
+    {op:"battlement",from:[-30,11,-22],to:[30,11,-22],step:3,height:2,mat:"stone"},
+    {op:"battlement",from:[-34,11,18],to:[0,11,28],step:3,height:2,mat:"stone"},
+    {op:"battlement",from:[0,11,28],to:[34,11,18],step:3,height:2,mat:"stone"},
+    {op:"stairs",from:[-8,0,19],dir:[0,0,-1],width:3,steps:12,rise:1,run:1,mat:"stone"}
+  ]
+};
