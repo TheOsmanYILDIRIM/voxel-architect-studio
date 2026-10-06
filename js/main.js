@@ -45,6 +45,14 @@ mountMaterialGrid($("#materialGrid"),async name=>{
   catch{statusBadge.textContent=name}
 });
 
-initRenderer($("#view"),zoomEl);
-loadSample();
-render();
+async function boot(){
+  statusBadge.textContent="3D hazırlanıyor";
+  await initRenderer($("#view"),zoomEl);
+  loadSample();
+}
+
+boot().catch(err=>{
+  errorBox.textContent=err.message;
+  errorBox.classList.remove("hidden");
+  statusBadge.textContent="3D hata";
+});
