@@ -1,9 +1,9 @@
 import {state,voxelKey} from "./state.js";
 import {vec3,linePoints} from "./utils.js";
 
-function setVoxel(x,y,z,mat){
+function setVoxel(x,y,z,mat,param2=0){
   x=Math.round(x);y=Math.round(y);z=Math.round(z);
-  state.voxels.set(voxelKey(x,y,z),{x,y,z,mat});
+  state.voxels.set(voxelKey(x,y,z),{x,y,z,mat,param2:Math.round(param2)||0});
 }
 function delVoxel(x,y,z){state.voxels.delete(voxelKey(Math.round(x),Math.round(y),Math.round(z)))}
 function matName(plan,mat){return plan.palette?.[mat]||mat||"default:stone"}
@@ -83,6 +83,11 @@ export function compile(plan){
     try{
       switch(op.op){
         case "box":fillBox(vec3(op.from,"box.from"),vec3(op.to,"box.to"),matName(plan,op.mat),!!op.hollow);break;
+        case "node":{
+          const [x,y,z]=vec3(op.pos,"node.pos");
+          setVoxel(x,y,z,matName(plan,op.mat||op.name),op.param2||0);
+          break;
+        }
         case "wall":wall(op,plan);break;
         case "round_tower":roundTower(op,plan);break;
         case "cylinder":cylinder(op,plan);break;
