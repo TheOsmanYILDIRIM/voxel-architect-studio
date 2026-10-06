@@ -1,8 +1,10 @@
 import {state,voxelKey} from "./state.js";
-import {materialColor} from "./materials.js";
+import {getMaterial} from "./materials.js";
 
-let canvas,ctx;
-let dragging=false,lastX=0,lastY=0,shiftDrag=false;
+let host,app,world,zoomEl;
+let dragging=false,lastX=0,lastY=0,dragStartX=0,dragStartY=0;
+const tileCache=new Map();
+const TILE_W=64,TILE_H=64,TOP_H=18,SIDE_H=28;
 
 function surfaceVoxels(){
   const dirs=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],out=[];
@@ -11,52 +13,142 @@ function surfaceVoxels(){
   }
   return out;
 }
-function project(v){
-  const c=state.camera,cy=Math.cos(c.yaw),sy=Math.sin(c.yaw),cp=Math.cos(c.pitch),sp=Math.sin(c.pitch);
-  const xr=v.x*cy-v.z*sy,zr=v.x*sy+v.z*cy;
-  const yr=v.y*cp-zr*sp,depth=v.y*sp+zr*cp;
-  return{x:xr*c.zoom+canvas.clientWidth/2+c.panX,y:-yr*c.zoom+canvas.clientHeight/2+c.panY,d:depth};
+
+function loadImage(url){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.crossOrigin="anonymous";
+    img.onload=()=>resolve(img);
+    img.onerror=reject;
+    img.src=url;
+  });
 }
-export function render(){
-  if(!ctx)return;
-  const w=canvas.clientWidth,h=canvas.clientHeight;
-  ctx.clearRect(0,0,w,h);ctx.fillStyle="#0a0d11";ctx.fillRect(0,0,w,h);
-  const surf=surfaceVoxels();
-  const items=surf.map(v=>({v,p:project(v)})).sort((a,b)=>a.p.d-b.p.d);
-  const s=Math.max(1.2,state.camera.zoom*.72);
-  for(const {v,p} of items){
-    ctx.fillStyle=materialColor(v.mat);
-    ctx.fillRect(p.x-s/2,p.y-s/2,s,s);
+
+function drawFace(ctx,img,kind){
+  ctx.save();
+  if(kind==="top"){
+    ctx.beginPath();
+    ctx.moveTo(TILE_W/2,0);ctx.lineTo(TILE_W,TOP_H);ctx.lineTo(TILE_W/2,TOP_H*2);ctx.lineTo(0,TOP_H);ctx.closePath();ctx.clip();
+    ctx.setTransform(2,1.125,-2,1.125,0,0);
+    ctx.drawImage(img,0,0,16,16,0,0,16,16);
+  }else if(kind==="left"){
+    ctx.beginPath();
+    ctx.moveTo(0,TOP_H);ctx.lineTo(TILE_W/2,TOP_H*2);ctx.lineTo(TILE_W/2,TOP_H*2+SIDE_H);ctx.lineTo(0,TOP_H+SIDE_H);ctx.closePath();ctx.clip();
+    ctx.setTransform(2,1.125,0,1.75,0,TOP_H);
+    ctx.drawImage(img,0,0,16,16,0,0,16,16);
+    ctx.fillStyle="rgba(0,0,0,.24)";ctx.fillRect(-100,-100,300,300);
+  }else{
+    ctx.beginPath();
+    ctx.moveTo(TILE_W,TOP_H);ctx.lineTo(TILE_W/2,TOP_H*2);ctx.lineTo(TILE_W/2,TOP_H*2+SIDE_H);ctx.lineTo(TILE_W,TOP_H+SIDE_H);ctx.closePath();ctx.clip();
+    ctx.setTransform(-2,1.125,0,1.75,TILE_W,TOP_H);
+    ctx.drawImage(img,0,0,16,16,0,0,16,16);
+    ctx.fillStyle="rgba(0,0,0,.38)";ctx.fillRect(-100,-100,300,300);
   }
-  ctx.fillStyle="rgba(255,255,255,.55)";ctx.font="11px system-ui";
-  ctx.fillText(`${surf.length.toLocaleString()} yüzey / ${state.voxels.size.toLocaleString()} voxel`,12,18);
+  ctx.restore();
 }
-export function fit(bounds){
-  const maxDim=Math.max(...bounds.size,1);
-  state.camera.zoom=Math.max(2,Math.min(12,Math.min(canvas.clientWidth,canvas.clientHeight)*.7/maxDim));
-  state.camera.panX=0;state.camera.panY=35;render();
+
+async function cubeTexture(name){
+  if(tileCache.has(name))return tileCache.get(name);
+  const material=getMaterial(name);
+  const c=document.createElement("canvas");c.width=TILE_W;c.height=TOP_H*2+SIDE_H;
+  const ctx=c.getContext("2d");
+  ctx.imageSmoothingEnabled=false;
+  if(material.url){
+    try{
+      const img=await loadImage(material.url);
+      drawFace(ctx,img,"top");drawFace(ctx,img,"left");drawFace(ctx,img,"right");
+    }catch{
+      ctx.fillStyle="#7d8793";ctx.fillRect(0,0,c.width,c.height);
+    }
+  }else{
+    ctx.fillStyle="#7d8793";ctx.fillRect(0,0,c.width,c.height);
+  }
+  const tex=window.PIXI.Texture.from(c);
+  tileCache.set(name,tex);
+  return tex;
 }
-export function initRenderer(el,zoomEl){
-  canvas=el;ctx=canvas.getContext("2d");
-  const resize=()=>{
-    const r=canvas.getBoundingClientRect(),dpr=Math.min(2,devicePixelRatio||1);
-    canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));
-    ctx.setTransform(dpr,0,0,dpr,0,0);render();
+
+function rotateXZ(x,z){
+  const a=state.camera.yaw,c=Math.cos(a),s=Math.sin(a);
+  return {x:x*c-z*s,z:x*s+z*c};
+}
+
+function iso(v){
+  const r=rotateXZ(v.x,v.z);
+  const unit=state.camera.zoom/7;
+  return {
+    x:(r.x-r.z)*(TILE_W/2)*unit,
+    y:(r.x+r.z)*(TOP_H/1.05)*unit-v.y*SIDE_H*unit,
+    depth:r.x+r.z+v.y*.02
   };
-  canvas.addEventListener("pointerdown",e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;shiftDrag=e.shiftKey;canvas.setPointerCapture(e.pointerId)});
-  canvas.addEventListener("pointerup",()=>dragging=false);
-  canvas.addEventListener("pointermove",e=>{
+}
+
+export async function render(){
+  if(!app||!world)return;
+  world.removeChildren().forEach(c=>c.destroy?.());
+  const surf=surfaceVoxels();
+  const prepared=[];
+  for(const v of surf){
+    const p=iso(v);
+    prepared.push({v,p,tex:await cubeTexture(v.mat)});
+  }
+  prepared.sort((a,b)=>a.p.depth-b.p.depth||a.v.y-b.v.y);
+  const unit=state.camera.zoom/7;
+  for(const item of prepared){
+    const sprite=new window.PIXI.Sprite(item.tex);
+    sprite.anchor.set(.5,1);
+    sprite.position.set(item.p.x,item.p.y);
+    sprite.scale.set(unit);
+    world.addChild(sprite);
+  }
+  world.position.set(app.renderer.width/2+state.camera.panX,app.renderer.height*.66+state.camera.panY);
+}
+
+export async function fit(bounds){
+  if(!app)return;
+  const maxDim=Math.max(bounds.size[0]+bounds.size[2],bounds.size[1]*2,1);
+  state.camera.zoom=Math.max(2,Math.min(10,Math.min(app.renderer.width,app.renderer.height)*.18/maxDim*7));
+  state.camera.panX=0;state.camera.panY=0;
+  if(zoomEl)zoomEl.value=Math.round(state.camera.zoom);
+  await render();
+}
+
+export async function initRenderer(el,zEl){
+  host=el;zoomEl=zEl;
+  app=new window.PIXI.Application();
+  await app.init({
+    resizeTo:host,
+    backgroundAlpha:0,
+    antialias:false,
+    preference:"webgl",
+    powerPreference:"low-power"
+  });
+  host.replaceChildren(app.canvas);
+  world=new window.PIXI.Container();
+  app.stage.addChild(world);
+
+  host.addEventListener("pointerdown",e=>{
+    dragging=true;lastX=e.clientX;lastY=e.clientY;dragStartX=e.clientX;dragStartY=e.clientY;
+    host.setPointerCapture?.(e.pointerId);
+  });
+  host.addEventListener("pointerup",()=>dragging=false);
+  host.addEventListener("pointercancel",()=>dragging=false);
+  host.addEventListener("pointermove",async e=>{
     if(!dragging)return;
     const dx=e.clientX-lastX,dy=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;
-    if(shiftDrag||e.shiftKey){state.camera.panX+=dx;state.camera.panY+=dy}
-    else{state.camera.yaw+=dx*.01;state.camera.pitch=Math.max(.12,Math.min(1.25,state.camera.pitch+dy*.006))}
-    render();
+    if(e.shiftKey){
+      state.camera.panX+=dx;state.camera.panY+=dy;
+    }else{
+      state.camera.yaw+=dx*.012;
+      state.camera.panY+=dy*.25;
+    }
+    await render();
   });
-  canvas.addEventListener("wheel",e=>{
+  host.addEventListener("wheel",async e=>{
     e.preventDefault();
     state.camera.zoom=Math.max(2,Math.min(18,state.camera.zoom*(e.deltaY>0?.9:1.1)));
-    zoomEl.value=Math.round(state.camera.zoom);render();
+    zoomEl.value=Math.round(state.camera.zoom);
+    await render();
   },{passive:false});
-  zoomEl.oninput=e=>{state.camera.zoom=+e.target.value;render()};
-  new ResizeObserver(resize).observe(canvas);window.addEventListener("resize",resize);resize();
+  zoomEl.oninput=async e=>{state.camera.zoom=+e.target.value;await render()};
 }
